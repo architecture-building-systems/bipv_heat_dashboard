@@ -1,16 +1,19 @@
 import os
 import ast
 import dash
+import glob
 from dash import dcc, html, Input, Output, State
 import pandas as pd
 import plotly.graph_objs as go
 
 
+app = dash.Dash(__name__)
 
 DATA_DIR = 'data'
 
 def list_feather_files():
-    return [f for f in os.listdir(DATA_DIR) if f.endswith('.feather')]
+    return glob.glob(os.path.join(DATA_DIR, '*.feather'))
+    # return [f for f in os.listdir(DATA_DIR) if f.endswith('.feather')]
 
 def load_df(filename):
     df = pd.read_feather(os.path.join(DATA_DIR, filename))
@@ -18,8 +21,6 @@ def load_df(filename):
     df = df[numeric_cols]
     df = df.interpolate().resample('1min').mean()
     return df
-
-app = dash.Dash(__name__)
 
 app.layout = html.Div([
     html.H1('BIPV Heat Dashboard'),
