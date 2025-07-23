@@ -2,14 +2,18 @@ import os
 import ast
 import dash
 import glob
-from dash import dcc, html, Input, Output, State
+from pathlib import Path
+from dash import dcc, html, Input, Output
 import pandas as pd
 import plotly.graph_objs as go
 
 
 app = dash.Dash(__name__)
 
-DATA_DIR = os.path.join(os.getcwd(), 'data')
+THIS_FOLDER = Path(__file__).parent.resolve()
+DATA_DIR = os.path.join(THIS_FOLDER,'data')
+
+# DATA_DIR = os.path.join(os.getcwd(), 'data')
 
 
 def list_feather_files():
