@@ -9,7 +9,7 @@ import plotly.graph_objs as go
 
 app = dash.Dash(__name__)
 
-DATA_DIR = 'data'
+DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
 
 def list_feather_files():
     return glob.glob(os.path.join(DATA_DIR, '*.feather'))
