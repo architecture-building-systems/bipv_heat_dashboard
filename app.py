@@ -10,10 +10,11 @@ import plotly.graph_objs as go
 app = dash.Dash(__name__)
 
 DATA_DIR = os.path.join(os.getcwd(), 'data')
-print(DATA_DIR)
+
 
 def list_feather_files():
     possible_list = glob.glob(os.path.join(DATA_DIR, '*.feather'))
+    print(f"data is in here {DATA_DIR}")
     return [f for f in possible_list if os.path.exists(f)]
 
 def load_df(filename):
