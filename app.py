@@ -5,6 +5,8 @@ from dash import dcc, html, Input, Output, State
 import pandas as pd
 import plotly.graph_objs as go
 
+
+
 DATA_DIR = 'data'
 
 def list_feather_files():
@@ -82,4 +84,6 @@ def update_plot(selected_file, selected_series):
     return fig
 
 if __name__ == '__main__':
-    app.run(debug=True) 
+    app.run(debug=True)
+
+server = app.server  # Expose the Flask server for WSGI 
