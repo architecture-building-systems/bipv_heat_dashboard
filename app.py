@@ -12,8 +12,8 @@ app = dash.Dash(__name__)
 DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
 
 def list_feather_files():
-    return glob.glob(os.path.join(DATA_DIR, '*.feather'))
-    # return [f for f in os.listdir(DATA_DIR) if f.endswith('.feather')]
+    possible_list = glob.glob(os.path.join(DATA_DIR, '*.feather'))
+    return [f for f in possible_list if os.path.exists(f)]
 
 def load_df(filename):
     df = pd.read_feather(os.path.join(DATA_DIR, filename))
