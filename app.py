@@ -89,17 +89,94 @@ def get_unit(col):
 app = dash.Dash(__name__)
 
 app.layout = html.Div([
-    html.H1('BIPV Heat Dashboard'),
-    html.Label('Select experiment:'),
-    dcc.Dropdown(id='experiment-dropdown'),
-    html.Br(),
-    html.Label('Select series (multiple allowed):'),
-    dcc.Dropdown(id='series-dropdown', multi=True),
-    html.Br(),
-    html.Div(id='file-status', style={'color': 'blue', 'fontStyle': 'italic'}),
-    html.Div(id='unit-warning', style={'color': 'red', 'fontWeight': 'bold'}),
-    dcc.Graph(id='timeseries-plot'),
+    html.H1('BIPV Heat Dashboard', style={'textAlign': 'center', 'marginBottom': '20px'}),
+    
+    # Top section - 20% height, split into two 50/50 columns
+    html.Div([
+        # Left column - Experiment selection
+        html.Div([
+            html.H3('Experiment Selection'),
+            html.Label('Select experiment:'),
+            dcc.Dropdown(id='experiment-dropdown'),
+            html.Br(),
+            html.Button('Download Raw Data', id='download-button', n_clicks=0, 
+                       style={'marginTop': '10px', 'width': '100%'}),
+            dcc.Download(id='download-data')
+        ], style={
+            'width': '50%', 
+            'display': 'inline-block', 
+            'verticalAlign': 'top',
+            'border': '1px solid #000'
+        }),
+        
+        # Right column - Experiment information
+        html.Div([
+            html.H3('Experiment Information'),
+            html.Div(id='file-status', style={'marginBottom': '10px'}),
+            html.Div(id='experiment-details', style={'fontSize': '14px', 'lineHeight': '1.4'}),
+        ], style={
+            'width': '50%', 
+            'display': 'inline-block', 
+            'verticalAlign': 'top',
+            'border': '1px solid #000'
+        }),
+    ], style={
+        'height': '20vh',
+        'overflow': 'auto',
+        'marginBottom': '5px'
+    }),
+    
+    # Bottom section - 80% height, split into left (plot) and right (controls)
+    html.Div([
+        # Left side - Plot area (70%)
+        html.Div([
+            html.Div(id='unit-warning', style={'color': 'red', 'fontWeight': 'bold', 'marginBottom': '5px'}),
+            dcc.Graph(id='timeseries-plot', style={'height': '68vh'}),
+        ], style={
+            'width': '70%',
+            'display': 'inline-block',
+            'verticalAlign': 'top',
+            'border': '1px solid #000'
+        }),
+        
+        # Right side - Controls and Legend (30%)
+        html.Div([
+            html.H4('Series Selection'),
+            html.Label('Select series (multiple allowed):'),
+            dcc.Dropdown(id='series-dropdown', multi=True),
+            html.Br(),
+            html.H4('Legend'),
+            html.Div(id='custom-legend', style={'fontSize': '12px', 'lineHeight': '1.6'}),
+        ], style={
+            'width': '28%',
+            'display': 'inline-block',
+            'verticalAlign': 'top',
+            'border': '1px solid #000',
+            'height': '70vh',
+            'overflow': 'auto'
+        }),
+    ], style={
+        'height': '70vh'
+    })
 ])
+
+@app.callback(
+    Output('download-data', 'data'),
+    Input('download-button', 'n_clicks'),
+    State('experiment-dropdown', 'value'),
+    prevent_initial_call=True
+)
+def download_experiment_data(n_clicks, selected_experiment):
+    if not selected_experiment:
+        return None
+    
+    feather_filename = get_feather_filename_from_experiment(selected_experiment)
+    feather_path = os.path.join(DATA_DIR, feather_filename)
+    
+    if not os.path.exists(feather_path):
+        return None
+    
+    return dcc.send_file(feather_path)
 
 @app.callback(
     Output('experiment-dropdown', 'options'),
@@ -128,24 +205,110 @@ def update_experiment_options(_):
     Output('series-dropdown', 'options'),
     Output('series-dropdown', 'value'),
     Output('file-status', 'children'),
+    Output('experiment-details', 'children'),
     Input('experiment-dropdown', 'value')
 )
 def update_series_options(selected_experiment):
     if not selected_experiment:
-        return [], [], ''
+        return [], [], '', ''
     
     feather_filename = get_feather_filename_from_experiment(selected_experiment)
     
     if not feather_file_exists(selected_experiment):
-        return [], [], f'Error: Data file {feather_filename} not found for experiment {selected_experiment}'
+        error_msg = f'Error: Data file {feather_filename} not found for experiment {selected_experiment}'
+        return [], [], error_msg, ''
     
     try:
         df = load_df(feather_filename)
         options = [{'label': str(col), 'value': str(col)} for col in df.columns]
         status = f'Loaded data from: {feather_filename}'
-        return options, [options[0]['value']] if options else [], status
+        
+        # Get experiment details
+        experiment_log = load_experiment_log()
+        exp_details = []
+        if experiment_log and selected_experiment in experiment_log:
+            exp_data = experiment_log[selected_experiment]
+            exp_details = [
+                html.P([html.Strong('Date: '), exp_data.get('Date', 'Unknown')]),
+                html.P([html.Strong('Monitor: '), exp_data.get('Monitor name', 'Unknown')]),
+                html.P([html.Strong('IR: '), f"{exp_data.get('IR', 'N/A')}%"]),
+                html.P([html.Strong('Warm White: '), f"{exp_data.get('WW', 'N/A')}%"]),
+                html.P([html.Strong('Cold White: '), f"{exp_data.get('CW', 'N/A')}%"]),
+                html.P([html.Strong('Notes: '), exp_data.get('Notes', 'None')], style={'fontStyle': 'italic'})
+            ]
+        
+        return options, [options[0]['value']] if options else [], status, exp_details
     except Exception as e:
-        return [], [], f'Error loading data from {feather_filename}: {e}'
+        error_msg = f'Error loading data from {feather_filename}: {e}'
+        return [], [], error_msg, ''
+
+@app.callback(
+    Output('custom-legend', 'children'),
+    Input('series-dropdown', 'value'),
+    Input('experiment-dropdown', 'value')
+)
+def update_custom_legend(selected_series, selected_experiment):
+    if not (selected_series and selected_experiment):
+        return ''
+    
+    feather_filename = get_feather_filename_from_experiment(selected_experiment)
+    
+    if not feather_file_exists(selected_experiment):
+        return ''
+    
+    try:
+        df = load_df(feather_filename)
+        
+        # Convert stringified tuples back to tuples if needed
+        cols = []
+        for s in selected_series:
+            try:
+                col = ast.literal_eval(s)
+            except Exception:
+                col = s
+            if col in df.columns:
+                cols.append(col)
+        
+        if not cols:
+            return ''
+        
+        # Group columns by unit for legend styling
+        unit_map = {}
+        for col in cols:
+            unit = get_unit(col)
+            if unit not in unit_map:
+                unit_map[unit] = []
+            unit_map[unit].append(col)
+        
+        units = list(unit_map.keys())
+        legend_items = []
+        
+        # Primary axis (solid lines)
+        if len(units) > 0:
+            legend_items.append(html.H5(f'Primary Axis ({units[0]})', style={'margin': '10px 0 5px 0', 'color': '#333'}))
+            for col in unit_map[units[0]]:
+                legend_items.append(
+                    html.Div([
+                        html.Span('━━', style={'color': '#1f77b4', 'marginRight': '5px', 'fontSize': '16px'}),
+                        html.Span(str(col), style={'fontSize': '11px'})
+                    ], style={'marginBottom': '3px'})
+                )
+        
+        # Secondary axis (dashed lines)
+        if len(units) > 1:
+            legend_items.append(html.H5(f'Secondary Axis ({units[1]})', style={'margin': '15px 0 5px 0', 'color': '#333'}))
+            for col in unit_map[units[1]]:
+                legend_items.append(
+                    html.Div([
+                        html.Span('╌╌', style={'color': '#ff7f0e', 'marginRight': '5px', 'fontSize': '16px'}),
+                        html.Span(str(col), style={'fontSize': '11px'})
+                    ], style={'marginBottom': '3px'})
+                )
+        
+        return legend_items
+        
+    except Exception:
+        return ''
 
 @app.callback(
     Output('timeseries-plot', 'figure'),
@@ -281,14 +444,7 @@ def update_plot(selected_experiment, selected_series):
     fig.update_layout(
         title=f"Experiment: {selected_experiment}",
         xaxis_title="Time",
-        legend=dict(
-            orientation="v",
-            yanchor="top",
-            y=1,
-            xanchor="left",
-            x=1.02
-        ),
-        showlegend=True
+        showlegend=False  # Hide default legend, we have custom legend on the right
     )
     
     return fig, warning
