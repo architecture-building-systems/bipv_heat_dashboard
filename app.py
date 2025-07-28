@@ -1,6 +1,7 @@
 import os
 import ast
 import pickle
+import re
 from pathlib import Path
 from datetime import datetime, timedelta
 import dash
@@ -14,6 +15,11 @@ DATA_DIR = os.path.join(THIS_FOLDER, 'data')
 
 def list_feather_files():
     return [f for f in os.listdir(DATA_DIR) if f.endswith('.feather')]
+
+def is_special_experiment(experiment_code):
+    """Check if experiment code matches special pattern idx-9** where ** are digits 1-9"""
+    pattern = r'^idx-9[1-9][1-9]$'
+    return re.match(pattern, experiment_code) is not None
 
 def get_experiment_log_file():
     """Get the single experiment log file"""
@@ -185,19 +191,36 @@ def download_experiment_data(n_clicks, selected_experiment):
 )
 def update_experiment_options(_):
     experiment_log = load_experiment_log()
-    if not experiment_log:
-        return [{'label': 'No experiment log found', 'value': None}], None
-    
-    # Only show experiments that have corresponding feather files
     available_experiments = []
-    for exp_code in experiment_log.keys():
-        if feather_file_exists(exp_code):
-            exp_data = experiment_log[exp_code]
-            label = f"{exp_code} ({exp_data.get('Date', 'Unknown date')})"
-            available_experiments.append({'label': label, 'value': exp_code})
+    
+    # Add experiments from the experiment log that have feather files
+    if experiment_log:
+        for exp_code in experiment_log.keys():
+            if feather_file_exists(exp_code):
+                exp_data = experiment_log[exp_code]
+                label = f"{exp_code} ({exp_data.get('Date', 'Unknown date')})"
+                available_experiments.append({'label': label, 'value': exp_code})
+    
+    # Add special experiments (idx-9**) that have feather files, even if not in experiment log
+    feather_files = list_feather_files()
+    feather_files.sort()
+    for feather_file in feather_files:
+        # Extract experiment code from filename (remove .feather extension)
+        exp_code = feather_file.replace('.feather', '')
+        
+        # Check if it's a special experiment and not already in the list
+        if is_special_experiment(exp_code.split("_")[0]):
+            # Check if already added from experiment log
+            already_added = any(exp['value'] == exp_code for exp in available_experiments)
+            if not already_added:
+                label = f"{exp_code} (Special experiment)"
+                available_experiments.append({'label': label, 'value': exp_code})
     
     if not available_experiments:
         return [{'label': 'No experiments with data files found', 'value': None}], None
+    
+    # Sort experiments by experiment code for better organization
+    available_experiments.sort(key=lambda x: x['value'] if x['value'] else '')
     
     return available_experiments, None
 
@@ -235,6 +258,22 @@ def update_series_options(selected_experiment):
                 html.P([html.Strong('Warm White: '), f"{exp_data.get('WW', 'N/A')}%"]),
                 html.P([html.Strong('Cold White: '), f"{exp_data.get('CW', 'N/A')}%"]),
                 html.P([html.Strong('Notes: '), exp_data.get('Notes', 'None')], style={'fontStyle': 'italic'})
+            ]
+        elif is_special_experiment(selected_experiment):
+            # Special experiment not in log
+            exp_details = [
+                html.P([html.Strong('Type: '), 'Special Experiment']),
+                html.P([html.Strong('Date: '), 'Not available']),
+                html.P([html.Strong('Monitor: '), 'Not available']),
+                html.P([html.Strong('IR: '), 'N/A']),
+                html.P([html.Strong('Warm White: '), 'N/A']),
+                html.P([html.Strong('Cold White: '), 'N/A']),
+                html.P([html.Strong('Notes: '), 'Special experiment - details not in experiment log'], style={'fontStyle': 'italic'})
+            ]
+        else:
+            # Regular experiment not found in log
+            exp_details = [
+                html.P([html.Strong('Status: '), 'Experiment not found in log'], style={'color': 'orange'})
             ]
         
         return options, [options[0]['value']] if options else [], status, exp_details
